@@ -1,0 +1,146 @@
+System-assigned Identity
+
+/////////////////////////////
+
+export VMNAME=prodserver
+export KVNAME=furniture-secrets$RANDOM
+
+az keyvault create --name $KVNAME \
+    --resource-group learn-469ed95d-c0cc-4bf1-95c5-9bc6ed83a2cc \
+    --default-action Allow \
+    --location $(az resource list --output tsv --query [0].location) \
+    --sku standard
+
+export publicIP=$(az vm create \
+    --name $VMNAME \
+    --resource-group learn-469ed95d-c0cc-4bf1-95c5-9bc6ed83a2cc \
+    --image UbuntuLTS \
+    --generate-ssh-keys \
+    --output tsv \
+    --query "publicIpAddress")
+
+az vm identity assign \
+  --name $VMNAME \
+  --resource-group learn-469ed95d-c0cc-4bf1-95c5-9bc6ed83a2cc
+
+
+az keyvault secret set \
+  --vault-name $KVNAME \
+  --name DBCredentials \
+  --value "Server=tcp:prodserverSQL.database.windows.net,1433;Database=myDataBase;User ID=mylogin@myserver;Password=examplePassword;Trusted_Connection=False;Encrypt=True;"
+
+
+echo $KVNAME
+furniture-secrets10781
+
+ssh $publicIP
+
+wget -q https://packages.microsoft.com/config/ubuntu/18.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
+sudo dpkg -i packages-microsoft-prod.deb
+sudo add-apt-repository universe
+sudo apt-get update
+sudo apt-get install apt-transport-https
+sudo apt-get update
+sudo apt-get install dotnet-sdk-3.1
+
+git clone https://github.com/MicrosoftDocs/mslearn-authenticate-apps-with-managed-identities identity
+
+exit
+
+
+//////////////////////////////////
+
+User-assigned Identity
+
+//////////////////////////////////
+
+az identity create \
+  --name <identity name>
+  --resource-group <resource group>
+
+az identity list \
+  --resource-group <resource group>
+
+az functionapp identity assign \
+  --name <function app name> \
+  --resource-group <resource group> \
+  --role <principal id>
+
+az keyvault set-policy \
+    --name <key vault name> \
+    --object-id <principal id> \
+    --secret-permissions get list
+
+az identity delete \
+  --name <identity name>
+  --resource-group <resource group>
+
+KeyVaultClient keyVaultClient = new KeyVaultClient(
+    new KeyVaultClient.AuthenticationCallback(azureServiceTokenProvider.KeyVaultTokenCallback));
+
+string keyVaultName = ...;
+string keyVaultSecretName = ...;
+var secret = await keyVaultClient
+    .GetSecretAsync($"https://{keyVaultName}.vault.azure.net/secrets/{keyVaultSecretName}")
+    .ConfigureAwait(false);
+
+Console.WriteLine($"Secret: {secret.Value}");
+
+////////////////////////////////////
+
+ssh $publicIP
+
+reset:
+export publicIP=$(az vm show \
+    --name prodserver \
+    --resource-group learn-469ed95d-c0cc-4bf1-95c5-9bc6ed83a2cc \
+    --show-details \
+    --query [publicIps] \
+    --output tsv)
+
+ssh $publicIP
+
+cd ~/identity/secretapp
+
+vi Program.cs
+Replace "<key vault name>" with your key vault name. Replace <secret name> with "DBCredentials", which is the name of the secret that you created in the key vault.
+
+dotnet restore
+dotnet build
+
+dotnet run
+
+prodserver
+az vm identity show \
+  --name prodserver \
+  --resource-group learn-469ed95d-c0cc-4bf1-95c5-9bc6ed83a2cc
+
+lintao_shen@Azure:~$ az vm identity show \
+>   --name prodserver \
+>   --resource-group learn-469ed95d-c0cc-4bf1-95c5-9bc6ed83a2cc
+{
+  "principalId": "20081673-7210-400c-9d22-ddce11f6eeaa",
+  "tenantId": "604c1504-c6a3-4080-81aa-b33091104187",
+  "type": "SystemAssigned",
+  "userAssignedIdentities": null
+}
+
+az keyvault set-policy \
+    --name $KVNAME \
+    --secret-permissions get list \
+    --object-id $(az vm identity show \
+                    --name prodserver \
+                    --resource-group learn-469ed95d-c0cc-4bf1-95c5-9bc6ed83a2cc \
+                    --output tsv \
+                    --query principalId)
+
+
+
+rerun:
+lintao_shen@prodserver:~$ cd ~/identity/secretapp
+lintao_shen@prodserver:~/identity/secretapp$ dotnet run
+Secret: Server=tcp:prodserverSQL.database.windows.net,1433;Database=myDataBase;User ID=mylogin@myserver;Password=examplePassword;Trusted_Connection=False;Encrypt=True;
+
+Get Secret:
+(Get-AzKeyVaultSecret -vaultName "VaultamortDiaryLintao" -name "HiddenLocation").SecretValueText
+
